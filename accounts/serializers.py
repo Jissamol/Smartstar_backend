@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model, authenticate
 from rest_framework import serializers
-from .models import TeacherProfile
+from .models import TeacherProfile, StudentProfile
 
 User = get_user_model()
 
@@ -20,7 +20,8 @@ from .models import User  # Ensure correct import
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'role']
+        fields = ['id', 'username', 'email', 'role', 'is_active']
+        extra_kwargs = {'password': {'write_only': True}}
 
 # ------------------------------
 # 2️⃣ LOGIN SERIALIZER
@@ -109,14 +110,17 @@ class TeacherRegistrationSerializer(serializers.ModelSerializer):
 # 4️⃣ TEACHER PROFILE SERIALIZER
 # ------------------------------
 class TeacherProfileSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
-    first_name = serializers.CharField(source='user.first_name', read_only=True)
-    last_name = serializers.CharField(source='user.last_name', read_only=True)
-    user_id = serializers.IntegerField(source='user.id', read_only=True)
-
+    user = UserSerializer(read_only=True)
+    
     class Meta:
         model = TeacherProfile
-        fields = ['id', 'user_id', 'username', 'email', 'first_name', 'last_name', 
-                 'subject', 'qualification', 'experience', 'contact_number', 'status',
-                 'department', 'profile_picture']
+        fields = ['id', 'user', 'subject', 'qualification', 'experience', 'contact_number', 'department', 'profile_picture', 'status']
+        read_only_fields = ['status']
+
+class StudentProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = StudentProfile
+        fields = ['id', 'user', 'department', 'roll_number', 'semester']
+        read_only_fields = ['department']

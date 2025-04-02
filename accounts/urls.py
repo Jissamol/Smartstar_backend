@@ -3,7 +3,7 @@ from .views import (
     TeacherRegistrationView, 
     AddStudent, LoginView, ProtectedView,
     pending_teachers, teacher_action,
-    TeacherProfileView
+    TeacherProfileView, StudentListView, StudentRegisterView
 )
 
 urlpatterns = [
@@ -14,4 +14,6 @@ urlpatterns = [
     path('teachers/register/', TeacherRegistrationView.as_view(), name='teacher-register'),
     path("teacher/add-student/", AddStudent.as_view(), name="add-student"),
     path('teacher/profile/', TeacherProfileView.as_view(), name='teacher-profile'),
+    path('students/department/<str:department>/', StudentListView.as_view(), name='student-list'),
+    path('students/register/', StudentRegisterView.as_view(), name='student-register'),
 ]

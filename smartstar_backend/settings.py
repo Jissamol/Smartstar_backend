@@ -12,6 +12,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -181,3 +186,12 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ]
+
+# Email Configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'  # Gmail's SMTP server
+EMAIL_PORT = 587  # SMTP port for TLS encryption
+EMAIL_USE_TLS = True  # Use TLS encryption
+EMAIL_HOST_USER = 'jissamolbenny2003@gmail.com'  # Your Gmail address
+EMAIL_HOST_PASSWORD = 'qxcf lwuo ndkn oamq'  # App Password (Not your Gmail password)
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

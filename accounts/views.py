@@ -4,14 +4,19 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
-from .models import User, TeacherProfile
+from .models import User, TeacherProfile, StudentProfile
 from .permissions import IsAdminUser, IsTeacher, IsStudent
 from .serializers import (
     UserSerializer, 
     TeacherProfileSerializer, 
     LoginSerializer,
-    TeacherRegistrationSerializer
+    TeacherRegistrationSerializer,
+    StudentProfileSerializer
 )
+import string
+import random
+from django.core.mail import send_mail
+from django.conf import settings
 
 # ADMIN VIEWS
 class ViewTeacherRegistrations(APIView):
@@ -278,6 +283,59 @@ class TeacherProfileView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    def put(self, request):
+        try:
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            if teacher_profile.status != 'approved':
+                return Response(
+                    {"error": "Your account is not approved yet"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Update user data
+            user = request.user
+            if 'username' in request.data:
+                user.username = request.data['username']
+            if 'email' in request.data:
+                user.email = request.data['email']
+            user.save()
+
+            # Update teacher profile data
+            if 'subject' in request.data:
+                teacher_profile.subject = request.data['subject']
+            if 'qualification' in request.data:
+                teacher_profile.qualification = request.data['qualification']
+            if 'experience' in request.data:
+                teacher_profile.experience = request.data['experience']
+            if 'contact_number' in request.data:
+                teacher_profile.contact_number = request.data['contact_number']
+            if 'department' in request.data:
+                teacher_profile.department = request.data['department']
+            if 'profile_picture' in request.FILES:
+                teacher_profile.profile_picture = request.FILES['profile_picture']
+            
+            teacher_profile.save()
+
+            # Return updated data
+            serializer = TeacherProfileSerializer(teacher_profile)
+            user_serializer = UserSerializer(user)
+            data = {
+                **user_serializer.data,
+                **serializer.data
+            }
+            return Response(data, status=status.HTTP_200_OK)
+
+        except TeacherProfile.DoesNotExist:
+            return Response(
+                {"error": "Teacher profile not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 class AdminCheckView(APIView):
     permission_classes = [AllowAny]
     
@@ -334,3 +392,136 @@ class TestLoginView(APIView):
                     "role": user.role
                 }
             })
+
+class StudentListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, department):
+        try:
+            # Get the teacher's profile to verify department
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            if teacher_profile.department != department:
+                return Response(
+                    {"error": "You can only view students in your department"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # Get all students in the department
+            students = StudentProfile.objects.filter(department=department)
+            serializer = StudentProfileSerializer(students, many=True)
+            return Response(serializer.data)
+        except TeacherProfile.DoesNotExist:
+            return Response(
+                {"error": "Teacher profile not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class StudentRegisterView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def generate_random_password(self, length=6):
+        # Generate a random 6-digit password
+        return ''.join(random.choice(string.digits) for _ in range(length))
+
+    def post(self, request):
+        try:
+            # Get teacher's profile and department
+            teacher_profile = TeacherProfile.objects.get(user=request.user)
+            if not teacher_profile.status == 'approved':
+                return Response({'error': 'Only approved teachers can add students'}, status=status.HTTP_403_FORBIDDEN)
+
+            # Validate department matches teacher's department
+            department = request.data.get('department')
+            if not department:
+                return Response({'error': 'Department is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if department != teacher_profile.department:
+                return Response({'error': 'You can only add students to your own department'}, status=status.HTTP_403_FORBIDDEN)
+
+            # Check if email already exists
+            email = request.data.get('email')
+            if User.objects.filter(email=email).exists():
+                return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if username already exists
+            username = request.data.get('username')
+            if User.objects.filter(username=username).exists():
+                return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if roll number already exists
+            roll_number = request.data.get('roll_number')
+            if StudentProfile.objects.filter(roll_number=roll_number).exists():
+                return Response({'error': 'Roll number already exists'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Generate random password (6 digits)
+            password = self.generate_random_password()
+
+            # Create user
+            user_data = {
+                'username': username,
+                'email': email,
+                'password': password,
+                'role': 'student'
+            }
+            user = User.objects.create_user(**user_data)
+
+            # Create student profile
+            student_profile = StudentProfile.objects.create(
+                user=user,
+                department=department,
+                roll_number=roll_number,
+                semester=request.data.get('semester')
+            )
+
+            # Send email with credentials
+            try:
+                subject = 'Your SmartStar Account Credentials'
+                message = f'''
+                Welcome to SmartStar!
+                
+                Your account has been created by your teacher.
+                
+                Username: {username}
+                Password: {password}
+                
+                Please login and change your password immediately.
+                
+                Best regards,
+                SmartStar Team
+                '''
+                from_email = settings.EMAIL_HOST_USER
+                recipient_list = [email]
+                
+                # Print debug information
+                print(f"Attempting to send email to: {email}")
+                print(f"From email: {from_email}")
+                print(f"Subject: {subject}")
+                
+                send_mail(
+                    subject,
+                    message,
+                    from_email,
+                    recipient_list,
+                    fail_silently=False,
+                )
+                print("Email sent successfully!")
+            except Exception as e:
+                print(f"Failed to send email: {str(e)}")
+                # Log the error but don't fail the registration
+                import traceback
+                traceback.print_exc()
+
+            return Response({
+                'message': 'Student registered successfully. Credentials have been sent to their email.',
+                'student_id': student_profile.id
+            }, status=status.HTTP_201_CREATED)
+
+        except TeacherProfile.DoesNotExist:
+            return Response({'error': 'Teacher profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
